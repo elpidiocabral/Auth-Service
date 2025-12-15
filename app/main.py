@@ -1,18 +1,23 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from contextlib import asynccontextmanager
 from app.database import get_db, init_db, User
 from app.schemas import UserCreate, UserLogin, UserResponse, Token
 from app.auth import get_password_hash, verify_password, create_access_token, decode_access_token
 
-app = FastAPI(title="Auth Service", version="1.0.0")
-security = HTTPBearer()
 
-
-@app.on_event("startup")
-def startup_event():
-    """Initialize database on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    # Startup: Initialize database
     init_db()
+    yield
+    # Shutdown: cleanup if needed
+
+
+app = FastAPI(title="Auth Service", version="1.0.0", lifespan=lifespan)
+security = HTTPBearer()
 
 
 @app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
