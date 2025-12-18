@@ -35,7 +35,7 @@ security = HTTPBearer()
 oauth_states = {}
 
 
-@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 def register(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
     db_user = db.query(User).filter(User.username == user.username).first()
@@ -66,7 +66,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-@app.post("/login", response_model=Token)
+@app.post("/login", response_model=Token, tags=["Authentication"])
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """Login user with username and password, return JWT token."""
     user = db.query(User).filter(User.username == user_credentials.username).first()
@@ -82,8 +82,9 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     
     return {"access_token": access_token, "token_type": "bearer", "user": user}
 
+# Google Endpoints
 
-@app.get("/auth/google/login")
+@app.get("/auth/google/login", tags=["OAuth - Google"])
 async def google_login():
     """Initiate Google OAuth2 flow"""
     state = secrets.token_urlsafe(32)
@@ -93,7 +94,7 @@ async def google_login():
     return RedirectResponse(url=auth_url)
 
 
-@app.get("/auth/google/callback", response_model=Token)
+@app.get("/auth/google/callback", response_model=Token, tags=["OAuth - Google"])
 async def google_callback(
     code: str = Query(...),
     state: str | None = Query(None),
@@ -188,41 +189,16 @@ def get_current_user(
     
     return user
 
+# Facebook Endpoints
 
-@app.get("/profile", response_model=UserResponse)
-def get_profile(current_user: User = Depends(get_current_user)):
-    """Get current user profile."""
-    return current_user
-
-
-@app.get("/health")
-def health_check():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "Auth Service"}
-
-
-@app.get("/me", response_model=UserResponse)
-def get_me(current_user: User = Depends(get_current_user)):
-    """Get current user information."""
-    return current_user
-
-
-@app.get("/")
-def root():
-    """Root endpoint."""
-    return {"message": "Auth Service API", "version": "1.0.0"}
-
-
-# Facebook OAuth Endpoints
-
-@app.get("/auth/facebook")
+@app.get("/auth/facebook", tags=["OAuth - Facebook"])
 def facebook_login():
     """Redirect to Facebook login page."""
     authorization_url = facebook_oauth.get_authorization_url()
     return RedirectResponse(authorization_url)
 
 
-@app.get("/auth/facebook/callback")
+@app.get("/auth/facebook/callback", tags=["OAuth - Facebook"])
 async def facebook_callback(code: Optional[str] = None, error: Optional[str] = None, db: Session = Depends(get_db)):
     """Handle Facebook OAuth callback."""
     if error:
@@ -313,3 +289,27 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
             "provider": user.provider
         }
     }
+
+
+@app.get("/profile", response_model=UserResponse, tags=["User Profile"])
+def get_profile(current_user: User = Depends(get_current_user)):
+    """Get current user profile."""
+    return current_user
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    """Health check endpoint."""
+    return {"status": "ok", "service": "Auth Service"}
+
+
+@app.get("/me", response_model=UserResponse, tags=["User Profile"])
+def get_me(current_user: User = Depends(get_current_user)):
+    """Get current user information."""
+    return current_user
+
+
+@app.get("/", tags=["Health"])
+def root():
+    """Root endpoint."""
+    return {"message": "Auth Service API", "version": "1.0.0"}
