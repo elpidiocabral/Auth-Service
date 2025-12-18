@@ -1,8 +1,9 @@
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from sqlalchemy.exc import OperationalError
+from datetime import datetime
 from app.config import DATABASE_URL
 import os
 
@@ -13,11 +14,17 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
+    username = Column(String, unique=True, index=True, nullable=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=True)  # Nullable for OAuth users
+    hashed_password = Column(String, nullable=True)
+    provider = Column(String, nullable=True)  # 'google', 'local', etc
+    provider_user_id = Column(String, nullable=True, index=True)  # Google sub
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    picture_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)  # Nullable for OAuth users
     facebook_id = Column(String, unique=True, index=True, nullable=True)
-    provider = Column(String, nullable=True)  # 'local', 'facebook', etc.
 
 
 def create_db_engine_with_retry():
@@ -37,12 +44,10 @@ def create_db_engine_with_retry():
 
 def create_db_engine():
     """Create database engine (SQLite doesn't need retry)."""
-    # SQLite doesn't need retry logic
     if DATABASE_URL.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
         return create_engine(DATABASE_URL, connect_args=connect_args)
     else:
-        # PostgreSQL with retry pattern
         return create_db_engine_with_retry()
 
 
