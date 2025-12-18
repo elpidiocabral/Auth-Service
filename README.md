@@ -350,10 +350,6 @@ Pull requests são bem-vindos! Para mudanças maiores:
 5. Push para a branch
 6. Abra um Pull Request
 
-## 📝 Licença
-
-MIT
-
 ## 🔗 Links Úteis
 
 - [Documentação FastAPI](https://fastapi.tiangolo.com/)
