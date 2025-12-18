@@ -6,6 +6,8 @@ Serviço de autenticação reutilizável com suporte a múltiplos provedores de 
 
 - 🔐 **Autenticação Local**: Login com usuário/senha
 - 🌐 **Google OAuth2**: Login simplificado via Google
+- 👍 **Facebook OAuth**: Login via Facebook
+- 🔑 **Reset de Senha**: Redefinição segura de senha via email
 - 🏗️ **Arquitetura Extensível**: Suporte para adicionar novos provedores
 - 🔑 **JWT Tokens**: Autenticação stateless
 - 🗄️ **PostgreSQL**: Banco de dados confiável
@@ -96,6 +98,52 @@ Content-Type: application/json
     "id": 1,
     "username": "john_doe",
     "email": "john@example.com",
+    "provider": "local"
+  }
+}
+```
+
+#### 🆕 Solicitar Reset de Senha
+```
+POST /forgot-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
+}
+```
+
+#### 🆕 Redefinir Senha
+```
+POST /reset-password
+Content-Type: application/json
+
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "new_password": "novaSenha123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Senha redefinida com sucesso. Você pode agora fazer login com sua nova senha."
+}
+```
+
+#### Listar Todas as Rotas
+```
+GET /routes
+```
+
+Retorna uma lista completa de todas as rotas disponíveis na API
     "first_name": null,
     "last_name": null,
     "picture_url": null,

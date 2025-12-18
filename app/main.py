@@ -191,6 +191,117 @@ def get_current_user(
     return user
 
 
+@app.post("/forgot-password", tags=["Password Reset"])
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Request password reset. Sends an email with a reset link.
+    
+    - **email**: User's email address
+    
+    Returns a generic message for security reasons.
+    """
+    user = db.query(User).filter(User.email == request.email).first()
+    
+    if not user:
+        return {
+            "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
+        }
+    
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este usuário foi registrado via OAuth. Por favor, use o login OAuth correspondente."
+        )
+    
+    reset_token = create_reset_password_token(data={"sub": user.email})
+    
+    import hashlib
+    token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
+    
+    user.reset_token_hash = token_hash
+    user.reset_token_expires = datetime.utcnow() + timedelta(minutes=15)
+    db.commit()
+    
+    email_sent = await send_reset_password_email(user.email, reset_token)
+    
+    if not email_sent:
+        user.reset_token_hash = None
+        user.reset_token_expires = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Falha ao enviar email de redefinição de senha. Tente novamente mais tarde."
+        )
+    
+    return {
+        "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
+    }
+
+
+@app.post("/reset-password", response_model=ResetPasswordResponse, tags=["Password Reset"])
+async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Reset user password using the reset token.
+    
+    - **token**: JWT token received in email
+    - **new_password**: New password for the user
+    
+    Returns success message if password is reset.
+    """
+    payload = decode_reset_password_token(request.token)
+    
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido ou expirado"
+        )
+    
+    email = payload.get("sub")
+    user = db.query(User).filter(User.email == email).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuário não encontrado"
+        )
+    
+    if not user.reset_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nenhuma solicitação de redefinição de senha ativa"
+        )
+    
+    import hashlib
+    token_hash = hashlib.sha256(request.token.encode()).hexdigest()
+    
+    if token_hash != user.reset_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido"
+        )
+    
+    if user.reset_token_expires < datetime.utcnow():
+        user.reset_token_hash = None
+        user.reset_token_expires = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token expirado"
+        )
+    
+    hashed_password = get_password_hash(request.new_password)
+    user.hashed_password = hashed_password
+    user.reset_token_hash = None
+    user.reset_token_expires = None
+    db.commit()
+    
+    await send_password_changed_email(user.email)
+    
+    return {
+        "message": "Senha redefinida com sucesso. Você pode agora fazer login com sua nova senha."
+    }
+
+
 @app.get("/auth/facebook", tags=["OAuth - Facebook"])
 def facebook_login():
     """Redirect to Facebook login page."""
@@ -313,3 +424,121 @@ def get_me(current_user: User = Depends(get_current_user)):
 def root():
     """Root endpoint."""
     return {"message": "Auth Service API", "version": "1.0.0"}
+
+
+@app.get("/routes", tags=["Documentation"])
+def list_routes():
+    """
+    List all available routes in the API.
+    
+    Returns a comprehensive documentation of all endpoints.
+    """
+    return {
+        "message": "Auth Service API Routes",
+        "version": "1.0.0",
+        "routes": {
+            "Authentication": [
+                {
+                    "method": "POST",
+                    "path": "/register",
+                    "description": "Register a new user",
+                    "body": {
+                        "username": "string",
+                        "email": "string",
+                        "password": "string"
+                    }
+                },
+                {
+                    "method": "POST",
+                    "path": "/login",
+                    "description": "Login user with username and password",
+                    "body": {
+                        "username": "string",
+                        "password": "string"
+                    }
+                }
+            ],
+            "Password Reset": [
+                {
+                    "method": "POST",
+                    "path": "/forgot-password",
+                    "description": "Request password reset. Sends email with reset link",
+                    "body": {
+                        "email": "string"
+                    }
+                },
+                {
+                    "method": "POST",
+                    "path": "/reset-password",
+                    "description": "Reset password using token from email",
+                    "body": {
+                        "token": "string (JWT token from email)",
+                        "new_password": "string"
+                    }
+                }
+            ],
+            "User Profile": [
+                {
+                    "method": "GET",
+                    "path": "/me",
+                    "description": "Get current user information",
+                    "auth": "Bearer token required"
+                },
+                {
+                    "method": "GET",
+                    "path": "/profile",
+                    "description": "Get current user profile",
+                    "auth": "Bearer token required"
+                }
+            ],
+            "OAuth - Google": [
+                {
+                    "method": "GET",
+                    "path": "/auth/google/login",
+                    "description": "Initiate Google OAuth2 flow"
+                },
+                {
+                    "method": "GET",
+                    "path": "/auth/google/callback",
+                    "description": "Handle Google OAuth2 callback",
+                    "params": {
+                        "code": "string",
+                        "state": "string"
+                    }
+                }
+            ],
+            "OAuth - Facebook": [
+                {
+                    "method": "GET",
+                    "path": "/auth/facebook",
+                    "description": "Redirect to Facebook login page"
+                },
+                {
+                    "method": "GET",
+                    "path": "/auth/facebook/callback",
+                    "description": "Handle Facebook OAuth callback",
+                    "params": {
+                        "code": "string (optional)",
+                        "error": "string (optional)"
+                    }
+                }
+            ],
+            "Health": [
+                {
+                    "method": "GET",
+                    "path": "/health",
+                    "description": "Health check endpoint"
+                },
+                {
+                    "method": "GET",
+                    "path": "/",
+                    "description": "Root endpoint"
+                }
+            ]
+        },
+        "documentation": {
+            "swagger_ui": "/docs",
+            "redoc": "/redoc",
+            "openapi_json": "/openapi.json"
+        }
+    }

@@ -67,17 +67,14 @@ async def send_reset_password_email(email: str, reset_token: str) -> bool:
         Se você não solicitou esta redefinição de senha, ignore este email.
         """
         
-        # Create message
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = SMTP_USER
         msg["To"] = email
         
-        # Attach text and HTML versions
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
         
-        # Send email
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
@@ -133,17 +130,14 @@ async def send_password_changed_email(email: str) -> bool:
         Se você não realizou esta ação, altere sua senha imediatamente.
         """
         
-        # Create message
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = SMTP_USER
         msg["To"] = email
         
-        # Attach text and HTML versions
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
         
-        # Send email
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
