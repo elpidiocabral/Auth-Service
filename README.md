@@ -1,58 +1,60 @@
 # Auth-Service
 
-Serviço de autenticação reutilizável focado em login e cadastro usando FastAPI e PostgreSQL.
+Serviço de autenticação reutilizável com suporte a múltiplos provedores de login (local, Google OAuth2). Construído com FastAPI e PostgreSQL.
 
 ## Features
 
-- 🔐 **Authentication**: User registration and login with JWT tokens
-- 🗄️ **Database**: PostgreSQL with SQLAlchemy ORM
-- 🔄 **Resilience**: Retry pattern using Tenacity library for DB connections
-- 🔒 **Security**: Password hashing with Bcrypt via Passlib
-- 🐳 **Containerization**: Docker and Docker Compose support
-
-## Tech Stack
-
-- **FastAPI**: Modern, fast web framework for building APIs
-- **PostgreSQL**: Powerful, open-source relational database
-- **SQLAlchemy**: SQL toolkit and ORM
-- **PyJWT**: JSON Web Token implementation
-- **Passlib + Bcrypt**: Password hashing library
-- **Psycopg2**: PostgreSQL adapter for Python
-- **Tenacity**: Retry library for resilience
-- **Uvicorn**: ASGI server
-
-## Prerequisites
-
-- Docker
-- Docker Compose
+- 🔐 **Autenticação Local**: Login com usuário/senha
+- 🌐 **Google OAuth2**: Login simplificado via Google
+- 🏗️ **Arquitetura Extensível**: Suporte para adicionar novos provedores
+- 🔑 **JWT Tokens**: Autenticação stateless
+- 🗄️ **PostgreSQL**: Banco de dados confiável
+- 🐳 **Docker**: Containerizado e pronto para produção
 
 ## Quick Start
 
-1. Clone the repository:
+### 1. Pré-requisitos
+
+- Docker e Docker Compose
+
+### 2. Configuração
+
 ```bash
-git clone https://github.com/elpidiocabral/Auth-Service.git
-cd Auth-Service
+# Copiar exemplo de variáveis
+cp .env.example .env
+
+# (Opcional) Configurar Google OAuth2
+# Edite .env com suas credenciais do Google
 ```
 
-2. Build and start the services:
+### 3. Iniciar
+
 ```bash
 docker-compose up --build
 ```
 
-3. The API will be available at `http://localhost:8000`
+A API estará disponível em `http://localhost:8000`
 
-4. Access the interactive API documentation:
-   - Swagger UI: `http://localhost:8000/docs`
-   - ReDoc: `http://localhost:8000/redoc`
+## API Documentation
 
-## API Endpoints
+### Documentação Interativa
 
-### 1. Register a new user
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
 
-**POST** `/register`
+### Endpoints
 
-Request body:
-```json
+#### Health Check
+```
+GET /health
+```
+Verifica se o serviço está funcionando.
+
+#### Registrar Usuário
+```
+POST /register
+Content-Type: application/json
+
 {
   "username": "john_doe",
   "email": "john@example.com",
@@ -60,43 +62,247 @@ Request body:
 }
 ```
 
-Response (201 Created):
+**Response (201):**
 ```json
 {
   "id": 1,
   "username": "john_doe",
-  "email": "john@example.com"
+  "email": "john@example.com",
+  "first_name": null,
+  "last_name": null,
+  "picture_url": null,
+  "provider": "local",
+  "created_at": "2025-12-17T10:30:00"
 }
 ```
 
-### 2. Login
+#### Login Local
+```
+POST /login
+Content-Type: application/json
 
-**POST** `/login`
-
-Request body:
-```json
 {
   "username": "john_doe",
   "password": "securepassword123"
 }
 ```
 
-Response (200 OK):
+**Response (200):**
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer"
+  "token_type": "bearer",
+  "user": {
+    "id": 1,
+    "username": "john_doe",
+    "email": "john@example.com",
+    "first_name": null,
+    "last_name": null,
+    "picture_url": null,
+    "provider": "local",
+    "created_at": "2025-12-17T10:30:00"
+  }
 }
 ```
 
-### 3. Get current user information
-
-**GET** `/me`
-
-Headers:
+#### Login com Google - Iniciar
 ```
+GET /auth/google/login
+```
+
+Redireciona para a tela de login do Google. Após autenticação, Google redireciona para o callback.
+
+#### Login com Google - Callback
+```
+POST /auth/google/callback
+Content-Type: application/json
+
+{
+  "code": "authorization_code_from_google",
+  "state": "state_token"
+}
+```
+
+**Response (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "user": {
+    "id": 2,
+    "username": null,
+    "email": "user@gmail.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "picture_url": "https://...",
+    "provider": "google",
+    "created_at": "2025-12-17T10:35:00"
+  }
+}
+```
+
+#### Obter Perfil
+```
+GET /profile
 Authorization: Bearer <access_token>
 ```
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "username": "john_doe",
+  "email": "john@example.com",
+  "first_name": null,
+  "last_name": null,
+  "picture_url": null,
+  "provider": "local",
+  "created_at": "2025-12-17T10:30:00"
+}
+```
+
+## Integração em Seu Projeto
+
+### Cliente JavaScript
+
+```javascript
+import AuthServiceClient from './client.js'
+
+const auth = new AuthServiceClient('http://localhost:8000')
+
+// Login local
+await auth.login('username', 'password')
+
+// Ou Google OAuth2
+auth.startGoogleLogin()
+
+// Usar token
+const profile = await auth.getProfile()
+console.log(auth.token) // JWT token
+```
+
+### Cliente Python
+
+```python
+from client_example import AuthServiceClient
+
+client = AuthServiceClient('http://localhost:8000')
+
+# Login local
+result = client.login('username', 'password')
+token = client.token
+
+# Usar em requisições
+profile = client.get_profile()
+```
+
+### Fazer Requisições Autenticadas
+
+```python
+import requests
+
+token = "seu_jwt_token_aqui"
+headers = {"Authorization": f"Bearer {token}"}
+
+response = requests.get(
+    "http://seu-servico/api/protected",
+    headers=headers
+)
+```
+
+## Configuração Google OAuth2
+
+1. Acesse [Google Cloud Console](https://console.cloud.google.com/)
+2. Crie um novo projeto
+3. Ative Google+ API
+4. Crie credencial OAuth2 (Web Application)
+5. Configure URIs autorizadas:
+   - **Origem**: `http://localhost:8000`
+   - **Callback**: `http://localhost:8000/auth/google/callback`
+6. Copie Client ID e Secret para `.env`:
+
+```env
+GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=seu-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+```
+
+## Variáveis de Ambiente
+
+Ver [`.env.example`](.env.example) para todas as opções:
+
+```env
+# Database
+DATABASE_URL=postgresql://user:password@host:5432/db
+
+# JWT
+SECRET_KEY=sua-chave-secreta
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Google OAuth2
+GOOGLE_CLIENT_ID=seu-id
+GOOGLE_CLIENT_SECRET=seu-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+
+# Frontend
+FRONTEND_URL=http://localhost:3000
+```
+
+## Estrutura do Projeto
+
+```
+app/
+├── __init__.py
+├── auth.py           # JWT e password hashing
+├── config.py         # Configurações
+├── database.py       # Modelos e conexão BD
+├── main.py           # Endpoints da API
+├── oauth.py          # Provedores OAuth
+└── schemas.py        # Modelos Pydantic
+```
+
+## Testing
+
+```bash
+chmod +x test_api.sh
+./test_api.sh
+```
+
+## Adicionar Novo Provedor OAuth
+
+1. Criar classe em `app/oauth.py`:
+
+```python
+class NovoProviderOAuth(OAuthProvider):
+    async def get_authorization_url(self, state: str) -> str:
+        # Implementar
+        pass
+    
+    async def get_user_info(self, code: str) -> Dict[str, Any]:
+        # Implementar
+        pass
+```
+
+2. Registrar em `oauth_manager`:
+
+```python
+oauth_manager.register_provider("novo", NovoProviderOAuth())
+```
+
+3. Adicionar endpoint em `main.py`
+
+## Contribuindo
+
+Pull requests são bem-vindos! Por favor:
+
+1. Teste sua implementação
+2. Mantenha a cobertura de testes
+3. Atualize a documentação
+
+## Licença
+
+MIT
 
 Response (200 OK):
 ```json
