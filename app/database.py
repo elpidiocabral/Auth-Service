@@ -23,7 +23,8 @@ class User(Base):
     last_name = Column(String, nullable=True)
     picture_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)  # Nullable for OAuth users
+    facebook_id = Column(String, unique=True, index=True, nullable=True)
 
 
 def create_db_engine_with_retry():
