@@ -401,7 +401,7 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
     }
 
 
-@app.get("/auth/discord", tags=["OAuth - Discord"])
+@app.get("/auth/discord/login", tags=["OAuth - Discord"])
 def discord_login():
     """Redirect to Discord login page."""
     authorization_url = discord_oauth.get_authorization_url()
