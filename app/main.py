@@ -37,7 +37,7 @@ security = HTTPBearer()
 oauth_states = {}
 
 
-@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 def register(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
     db_user = db.query(User).filter(User.username == user.username).first()
@@ -68,7 +68,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-@app.post("/login", response_model=Token)
+@app.post("/login", response_model=Token, tags=["Authentication"])
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """Login user with username and password, return JWT token."""
     user = db.query(User).filter(User.username == user_credentials.username).first()
@@ -85,7 +85,7 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 
-@app.get("/auth/google/login")
+@app.get("/auth/google/login", tags=["OAuth - Google"])
 async def google_login():
     """Initiate Google OAuth2 flow"""
     state = secrets.token_urlsafe(32)
@@ -95,7 +95,7 @@ async def google_login():
     return RedirectResponse(url=auth_url)
 
 
-@app.get("/auth/google/callback", response_model=Token)
+@app.get("/auth/google/callback", response_model=Token, tags=["OAuth - Google"])
 async def google_callback(
     code: str = Query(...),
     state: str | None = Query(None),
@@ -191,153 +191,14 @@ def get_current_user(
     return user
 
 
-@app.get("/profile", response_model=UserResponse)
-def get_profile(current_user: User = Depends(get_current_user)):
-    """Get current user profile."""
-    return current_user
-
-
-@app.get("/health")
-def health_check():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "Auth Service"}
-
-
-@app.get("/me", response_model=UserResponse)
-def get_me(current_user: User = Depends(get_current_user)):
-    """Get current user information."""
-    return current_user
-
-
-@app.get("/")
-def root():
-    """Root endpoint."""
-    return {"message": "Auth Service API", "version": "1.0.0"}
-
-
-# Password Reset Endpoints
-
-@app.post("/forgot-password")
-async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    """
-    Request password reset. Sends an email with a reset link.
-    """
-    user = db.query(User).filter(User.email == request.email).first()
-    
-    if not user:
-        # Don't reveal if email exists for security reasons
-        return {
-            "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
-        }
-    
-    if not user.hashed_password:
-        # User registered via OAuth, cannot reset password
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este usuário foi registrado via OAuth. Por favor, use o login OAuth correspondente."
-        )
-    
-    # Create reset token
-    reset_token = create_reset_password_token(data={"sub": user.email})
-    
-    # Hash the token before storing (for security)
-    import hashlib
-    token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
-    
-    user.reset_token_hash = token_hash
-    user.reset_token_expires = datetime.utcnow() + timedelta(minutes=15)
-    db.commit()
-    
-    # Send email
-    email_sent = await send_reset_password_email(user.email, reset_token)
-    
-    if not email_sent:
-        # Token was stored but email failed to send
-        user.reset_token_hash = None
-        user.reset_token_expires = None
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Falha ao enviar email de redefinição de senha. Tente novamente mais tarde."
-        )
-    
-    return {
-        "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
-    }
-
-
-@app.post("/reset-password", response_model=ResetPasswordResponse)
-async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
-    """
-    Reset user password using the reset token.
-    """
-    # Decode token
-    payload = decode_reset_password_token(request.token)
-    
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token inválido ou expirado"
-        )
-    
-    email = payload.get("sub")
-    user = db.query(User).filter(User.email == email).first()
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Usuário não encontrado"
-        )
-    
-    if not user.reset_token_hash:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Nenhuma solicitação de redefinição de senha ativa"
-        )
-    
-    # Verify token hash
-    import hashlib
-    token_hash = hashlib.sha256(request.token.encode()).hexdigest()
-    
-    if token_hash != user.reset_token_hash:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token inválido"
-        )
-    
-    # Check if token is expired
-    if user.reset_token_expires < datetime.utcnow():
-        user.reset_token_hash = None
-        user.reset_token_expires = None
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token expirado"
-        )
-    
-    # Update password
-    hashed_password = get_password_hash(request.new_password)
-    user.hashed_password = hashed_password
-    user.reset_token_hash = None
-    user.reset_token_expires = None
-    db.commit()
-    
-    # Send confirmation email
-    await send_password_changed_email(user.email)
-    
-    return {
-        "message": "Senha redefinida com sucesso. Você pode agora fazer login com sua nova senha."
-    }
-
-
-@app.get("/auth/facebook")
+@app.get("/auth/facebook", tags=["OAuth - Facebook"])
 def facebook_login():
     """Redirect to Facebook login page."""
     authorization_url = facebook_oauth.get_authorization_url()
     return RedirectResponse(authorization_url)
 
 
-@app.get("/auth/facebook/callback")
+@app.get("/auth/facebook/callback", tags=["OAuth - Facebook"])
 async def facebook_callback(code: Optional[str] = None, error: Optional[str] = None, db: Session = Depends(get_db)):
     """Handle Facebook OAuth callback."""
     if error:
@@ -428,3 +289,27 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
             "provider": user.provider
         }
     }
+
+
+@app.get("/profile", response_model=UserResponse, tags=["User Profile"])
+def get_profile(current_user: User = Depends(get_current_user)):
+    """Get current user profile."""
+    return current_user
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    """Health check endpoint."""
+    return {"status": "ok", "service": "Auth Service"}
+
+
+@app.get("/me", response_model=UserResponse, tags=["User Profile"])
+def get_me(current_user: User = Depends(get_current_user)):
+    """Get current user information."""
+    return current_user
+
+
+@app.get("/", tags=["Health"])
+def root():
+    """Root endpoint."""
+    return {"message": "Auth Service API", "version": "1.0.0"}

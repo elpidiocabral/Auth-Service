@@ -17,13 +17,13 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=True)
-    provider = Column(String, nullable=True)  # 'google', 'local', etc
-    provider_user_id = Column(String, nullable=True, index=True)  # Google sub
+    provider = Column(String, nullable=True)  
+    provider_user_id = Column(String, nullable=True, index=True)  
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     picture_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)  # Nullable for OAuth users
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)  
     facebook_id = Column(String, unique=True, index=True, nullable=True)
     reset_token_hash = Column(String, nullable=True)
     reset_token_expires = Column(DateTime, nullable=True)
