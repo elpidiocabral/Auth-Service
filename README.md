@@ -339,17 +339,6 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 Use o Swagger UI em `/docs` ou ferramentas como cURL, Postman, Insomnia.
 
-## 🤝 Contribuindo
-
-Pull requests são bem-vindos! Para mudanças maiores:
-
-1. Abra uma issue primeiro
-2. Fork o projeto
-3. Crie sua feature branch
-4. Commit suas mudanças
-5. Push para a branch
-6. Abra um Pull Request
-
 ## 🔗 Links Úteis
 
 - [Documentação FastAPI](https://fastapi.tiangolo.com/)
