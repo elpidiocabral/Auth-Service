@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from sqlalchemy.exc import OperationalError
 from app.config import DATABASE_URL
+import os
 
 Base = declarative_base()
 
@@ -17,18 +18,30 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
 
 
-@retry(
-    retry=retry_if_exception_type(OperationalError),
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=True
-)
+def create_db_engine_with_retry():
+    """Create database engine with retry pattern for PostgreSQL."""
+    @retry(
+        retry=retry_if_exception_type(OperationalError),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
+    def _create():
+        engine = create_engine(DATABASE_URL)
+        engine.connect()
+        return engine
+    return _create()
+
+
 def create_db_engine():
-    """Create database engine with retry pattern for resilience."""
-    engine = create_engine(DATABASE_URL)
-    # Test connection
-    engine.connect()
-    return engine
+    """Create database engine (SQLite doesn't need retry)."""
+    # SQLite doesn't need retry logic
+    if DATABASE_URL.startswith("sqlite"):
+        connect_args = {"check_same_thread": False}
+        return create_engine(DATABASE_URL, connect_args=connect_args)
+    else:
+        # PostgreSQL with retry pattern
+        return create_db_engine_with_retry()
 
 
 engine = create_db_engine()
