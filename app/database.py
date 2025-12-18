@@ -25,6 +25,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)  
     facebook_id = Column(String, unique=True, index=True, nullable=True)
+    discord_id = Column(String, unique=True, index=True, nullable=True)
     reset_token_hash = Column(String, nullable=True)
     reset_token_expires = Column(DateTime, nullable=True)
 

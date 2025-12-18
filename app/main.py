@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from app.database import get_db, init_db, User
 from app.schemas import UserCreate, UserLogin, UserResponse, Token, GoogleLoginRequest, ForgotPasswordRequest, ResetPasswordRequest, ResetPasswordResponse
 from app.auth import get_password_hash, verify_password, create_access_token, decode_access_token, create_reset_password_token, decode_reset_password_token
-from app.oauth import oauth_manager, facebook_oauth
+from app.oauth import oauth_manager, facebook_oauth, discord_oauth
 from app.email_service import send_reset_password_email, send_password_changed_email
 import secrets
 
@@ -83,6 +83,117 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.email})
     
     return {"access_token": access_token, "token_type": "bearer", "user": user}
+
+
+@app.post("/forgot-password", tags=["Authentication"])
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Request password reset. Sends an email with a reset link.
+    
+    - **email**: User's email address
+    
+    Returns a generic message for security reasons.
+    """
+    user = db.query(User).filter(User.email == request.email).first()
+    
+    if not user:
+        return {
+            "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
+        }
+    
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este usuário foi registrado via OAuth. Por favor, use o login OAuth correspondente."
+        )
+    
+    reset_token = create_reset_password_token(data={"sub": user.email})
+    
+    import hashlib
+    token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
+    
+    user.reset_token_hash = token_hash
+    user.reset_token_expires = datetime.utcnow() + timedelta(minutes=15)
+    db.commit()
+    
+    email_sent = await send_reset_password_email(user.email, reset_token)
+    
+    if not email_sent:
+        user.reset_token_hash = None
+        user.reset_token_expires = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Falha ao enviar email de redefinição de senha. Tente novamente mais tarde."
+        )
+    
+    return {
+        "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
+    }
+
+
+@app.post("/reset-password", response_model=ResetPasswordResponse, tags=["Authentication"])
+async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Reset user password using the reset token.
+    
+    - **token**: JWT token received in email
+    - **new_password**: New password for the user
+    
+    Returns success message if password is reset.
+    """
+    payload = decode_reset_password_token(request.token)
+    
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido ou expirado"
+        )
+    
+    email = payload.get("sub")
+    user = db.query(User).filter(User.email == email).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuário não encontrado"
+        )
+    
+    if not user.reset_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nenhuma solicitação de redefinição de senha ativa"
+        )
+    
+    import hashlib
+    token_hash = hashlib.sha256(request.token.encode()).hexdigest()
+    
+    if token_hash != user.reset_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido"
+        )
+    
+    if user.reset_token_expires < datetime.utcnow():
+        user.reset_token_hash = None
+        user.reset_token_expires = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token expirado"
+        )
+    
+    hashed_password = get_password_hash(request.new_password)
+    user.hashed_password = hashed_password
+    user.reset_token_hash = None
+    user.reset_token_expires = None
+    db.commit()
+    
+    await send_password_changed_email(user.email)
+    
+    return {
+        "message": "Senha redefinida com sucesso. Você pode agora fazer login com sua nova senha."
+    }
 
 
 @app.get("/auth/google/login", tags=["OAuth - Google"])
@@ -190,118 +301,6 @@ def get_current_user(
     
     return user
 
-
-@app.post("/forgot-password", tags=["Password Reset"])
-async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    """
-    Request password reset. Sends an email with a reset link.
-    
-    - **email**: User's email address
-    
-    Returns a generic message for security reasons.
-    """
-    user = db.query(User).filter(User.email == request.email).first()
-    
-    if not user:
-        return {
-            "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
-        }
-    
-    if not user.hashed_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este usuário foi registrado via OAuth. Por favor, use o login OAuth correspondente."
-        )
-    
-    reset_token = create_reset_password_token(data={"sub": user.email})
-    
-    import hashlib
-    token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
-    
-    user.reset_token_hash = token_hash
-    user.reset_token_expires = datetime.utcnow() + timedelta(minutes=15)
-    db.commit()
-    
-    email_sent = await send_reset_password_email(user.email, reset_token)
-    
-    if not email_sent:
-        user.reset_token_hash = None
-        user.reset_token_expires = None
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Falha ao enviar email de redefinição de senha. Tente novamente mais tarde."
-        )
-    
-    return {
-        "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
-    }
-
-
-@app.post("/reset-password", response_model=ResetPasswordResponse, tags=["Password Reset"])
-async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
-    """
-    Reset user password using the reset token.
-    
-    - **token**: JWT token received in email
-    - **new_password**: New password for the user
-    
-    Returns success message if password is reset.
-    """
-    payload = decode_reset_password_token(request.token)
-    
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token inválido ou expirado"
-        )
-    
-    email = payload.get("sub")
-    user = db.query(User).filter(User.email == email).first()
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Usuário não encontrado"
-        )
-    
-    if not user.reset_token_hash:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Nenhuma solicitação de redefinição de senha ativa"
-        )
-    
-    import hashlib
-    token_hash = hashlib.sha256(request.token.encode()).hexdigest()
-    
-    if token_hash != user.reset_token_hash:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token inválido"
-        )
-    
-    if user.reset_token_expires < datetime.utcnow():
-        user.reset_token_hash = None
-        user.reset_token_expires = None
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token expirado"
-        )
-    
-    hashed_password = get_password_hash(request.new_password)
-    user.hashed_password = hashed_password
-    user.reset_token_hash = None
-    user.reset_token_expires = None
-    db.commit()
-    
-    await send_password_changed_email(user.email)
-    
-    return {
-        "message": "Senha redefinida com sucesso. Você pode agora fazer login com sua nova senha."
-    }
-
-
 @app.get("/auth/facebook", tags=["OAuth - Facebook"])
 def facebook_login():
     """Redirect to Facebook login page."""
@@ -398,6 +397,111 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
             "username": user.username,
             "email": user.email,
             "provider": user.provider
+        }
+    }
+
+
+@app.get("/auth/discord", tags=["OAuth - Discord"])
+def discord_login():
+    """Redirect to Discord login page."""
+    authorization_url = discord_oauth.get_authorization_url()
+    return RedirectResponse(authorization_url)
+
+
+@app.get("/auth/discord/callback", tags=["OAuth - Discord"])
+async def discord_callback(code: Optional[str] = None, error: Optional[str] = None, db: Session = Depends(get_db)):
+    """Handle Discord OAuth callback."""
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Discord authentication failed: {error}"
+        )
+    
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authorization code not provided"
+        )
+    
+    token_data = await discord_oauth.get_access_token(code)
+    if not token_data or "access_token" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to get access token from Discord"
+        )
+    
+    user_info = await discord_oauth.get_user_info(token_data["access_token"])
+    if not user_info:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to get user information from Discord"
+        )
+    
+    discord_id = user_info.get("id")
+    email = user_info.get("email")
+    username_discord = user_info.get("username", "")
+    discriminator = user_info.get("discriminator", "")
+    avatar = user_info.get("avatar")
+    
+    if not discord_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discord ID not provided"
+        )
+    
+    user = db.query(User).filter(User.discord_id == discord_id).first()
+    
+    if not user:
+        if email:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                user.discord_id = discord_id
+                user.provider = "discord"
+                db.commit()
+                db.refresh(user)
+            else:
+                username = email.split("@")[0] if email else f"discord_{discord_id}"
+                
+                existing_user = db.query(User).filter(User.username == username).first()
+                if existing_user:
+                    username = f"{username}_{discord_id[:8]}"
+                
+                user = User(
+                    username=username,
+                    email=email or f"{discord_id}@discord.user",
+                    discord_id=discord_id,
+                    provider="discord",
+                    hashed_password=None,
+                    first_name=username_discord
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+        else:
+            username = f"discord_{discord_id}"
+            user = User(
+                username=username,
+                email=f"{discord_id}@discord.user",
+                discord_id=discord_id,
+                provider="discord",
+                hashed_password=None,
+                first_name=username_discord
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+    
+    access_token = create_access_token(data={"sub": user.username if user.username else user.email})
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "provider": user.provider,
+            "discord_id": user.discord_id
         }
     }
 
