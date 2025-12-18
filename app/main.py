@@ -13,10 +13,8 @@ from app.oauth import facebook_oauth
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
-    # Startup: Initialize database
     init_db()
     yield
-    # Shutdown: cleanup if needed
 
 
 app = FastAPI(title="Auth Service", version="1.0.0", lifespan=lifespan)
@@ -26,7 +24,6 @@ security = HTTPBearer()
 @app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
-    # Check if username already exists
     db_user = db.query(User).filter(User.username == user.username).first()
     if db_user:
         raise HTTPException(
@@ -34,7 +31,6 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
             detail="Username already registered"
         )
     
-    # Check if email already exists
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(
@@ -42,7 +38,6 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
     
-    # Create new user
     hashed_password = get_password_hash(user.password)
     new_user = User(
         username=user.username,
@@ -59,7 +54,6 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 @app.post("/login", response_model=Token)
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """Login user and return JWT token."""
-    # Find user by username
     user = db.query(User).filter(User.username == user_credentials.username).first()
     
     if not user or not verify_password(user_credentials.password, user.hashed_password):
@@ -69,7 +63,6 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create access token
     access_token = create_access_token(data={"sub": user.username})
     
     return {"access_token": access_token, "token_type": "bearer"}
@@ -121,7 +114,7 @@ def root():
     return {"message": "Auth Service API", "version": "1.0.0"}
 
 
-# ================ Facebook OAuth Endpoints ================
+# Facebook OAuth Endpoints
 
 @app.get("/auth/facebook")
 def facebook_login():
@@ -145,7 +138,6 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
             detail="Authorization code not provided"
         )
     
-    # Exchange code for access token
     token_data = await facebook_oauth.get_access_token(code)
     if not token_data or "access_token" not in token_data:
         raise HTTPException(
@@ -153,7 +145,6 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
             detail="Failed to get access token from Facebook"
         )
     
-    # Get user info from Facebook
     user_info = await facebook_oauth.get_user_info(token_data["access_token"])
     if not user_info:
         raise HTTPException(
@@ -171,24 +162,19 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
             detail="Facebook ID not provided"
         )
     
-    # Check if user exists with this Facebook ID
     user = db.query(User).filter(User.facebook_id == facebook_id).first()
     
     if not user:
-        # Check if user exists with this email
         if email:
             user = db.query(User).filter(User.email == email).first()
             if user:
-                # Link Facebook account to existing user
                 user.facebook_id = facebook_id
                 user.provider = "facebook"
                 db.commit()
                 db.refresh(user)
             else:
-                # Create new user
                 username = email.split("@")[0] if email else f"facebook_{facebook_id}"
                 
-                # Ensure username is unique
                 existing_user = db.query(User).filter(User.username == username).first()
                 if existing_user:
                     username = f"{username}_{facebook_id[:8]}"
@@ -198,13 +184,12 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
                     email=email or f"{facebook_id}@facebook.com",
                     facebook_id=facebook_id,
                     provider="facebook",
-                    hashed_password=None  # No password for OAuth users
+                    hashed_password=None  
                 )
                 db.add(user)
                 db.commit()
                 db.refresh(user)
         else:
-            # No email provided, create user with Facebook ID
             username = f"facebook_{facebook_id}"
             user = User(
                 username=username,
@@ -217,11 +202,8 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
             db.commit()
             db.refresh(user)
     
-    # Create JWT token
     access_token = create_access_token(data={"sub": user.username})
     
-    # In production, redirect to your frontend with the token
-    # For now, return the token
     return {
         "access_token": access_token,
         "token_type": "bearer",
