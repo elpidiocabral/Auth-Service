@@ -301,7 +301,7 @@ def get_current_user(
     
     return user
 
-@app.get("/auth/facebook", tags=["OAuth - Facebook"])
+@app.get("/auth/facebook/login", tags=["OAuth - Facebook"])
 def facebook_login():
     """Redirect to Facebook login page."""
     authorization_url = facebook_oauth.get_authorization_url()
