@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import Optional
+from datetime import datetime, timedelta
 from app.database import get_db, init_db, User
-from app.schemas import UserCreate, UserLogin, UserResponse, Token, GoogleLoginRequest
-from app.auth import get_password_hash, verify_password, create_access_token, decode_access_token
+from app.schemas import UserCreate, UserLogin, UserResponse, Token, GoogleLoginRequest, ForgotPasswordRequest, ResetPasswordRequest, ResetPasswordResponse
+from app.auth import get_password_hash, verify_password, create_access_token, decode_access_token, create_reset_password_token, decode_reset_password_token
 from app.oauth import oauth_manager, facebook_oauth
+from app.email_service import send_reset_password_email, send_password_changed_email
 import secrets
 
 
@@ -213,7 +215,120 @@ def root():
     return {"message": "Auth Service API", "version": "1.0.0"}
 
 
-# Facebook OAuth Endpoints
+# Password Reset Endpoints
+
+@app.post("/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Request password reset. Sends an email with a reset link.
+    """
+    user = db.query(User).filter(User.email == request.email).first()
+    
+    if not user:
+        # Don't reveal if email exists for security reasons
+        return {
+            "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
+        }
+    
+    if not user.hashed_password:
+        # User registered via OAuth, cannot reset password
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este usuário foi registrado via OAuth. Por favor, use o login OAuth correspondente."
+        )
+    
+    # Create reset token
+    reset_token = create_reset_password_token(data={"sub": user.email})
+    
+    # Hash the token before storing (for security)
+    import hashlib
+    token_hash = hashlib.sha256(reset_token.encode()).hexdigest()
+    
+    user.reset_token_hash = token_hash
+    user.reset_token_expires = datetime.utcnow() + timedelta(minutes=15)
+    db.commit()
+    
+    # Send email
+    email_sent = await send_reset_password_email(user.email, reset_token)
+    
+    if not email_sent:
+        # Token was stored but email failed to send
+        user.reset_token_hash = None
+        user.reset_token_expires = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Falha ao enviar email de redefinição de senha. Tente novamente mais tarde."
+        )
+    
+    return {
+        "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
+    }
+
+
+@app.post("/reset-password", response_model=ResetPasswordResponse)
+async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Reset user password using the reset token.
+    """
+    # Decode token
+    payload = decode_reset_password_token(request.token)
+    
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido ou expirado"
+        )
+    
+    email = payload.get("sub")
+    user = db.query(User).filter(User.email == email).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuário não encontrado"
+        )
+    
+    if not user.reset_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nenhuma solicitação de redefinição de senha ativa"
+        )
+    
+    # Verify token hash
+    import hashlib
+    token_hash = hashlib.sha256(request.token.encode()).hexdigest()
+    
+    if token_hash != user.reset_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido"
+        )
+    
+    # Check if token is expired
+    if user.reset_token_expires < datetime.utcnow():
+        user.reset_token_hash = None
+        user.reset_token_expires = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token expirado"
+        )
+    
+    # Update password
+    hashed_password = get_password_hash(request.new_password)
+    user.hashed_password = hashed_password
+    user.reset_token_hash = None
+    user.reset_token_expires = None
+    db.commit()
+    
+    # Send confirmation email
+    await send_password_changed_email(user.email)
+    
+    return {
+        "message": "Senha redefinida com sucesso. Você pode agora fazer login com sua nova senha."
+    }
+
 
 @app.get("/auth/facebook")
 def facebook_login():
