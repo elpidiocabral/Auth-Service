@@ -4,10 +4,12 @@ Supports multiple OAuth2 providers with a unified interface
 """
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
+from urllib.parse import urlencode
 import httpx
 from app.config import (
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI,
-    FACEBOOK_CLIENT_ID, FACEBOOK_CLIENT_SECRET, FACEBOOK_REDIRECT_URI
+    FACEBOOK_CLIENT_ID, FACEBOOK_CLIENT_SECRET, FACEBOOK_REDIRECT_URI,
+    DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI
 )
 
 
@@ -126,7 +128,7 @@ class FacebookOAuth:
         if state:
             params["state"] = state
         
-        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        query_string = urlencode(params)
         return f"{self.AUTHORIZATION_URL}?{query_string}"
     
     async def get_access_token(self, code: str) -> Optional[Dict]:
@@ -156,6 +158,69 @@ class FacebookOAuth:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(self.USER_INFO_URL, params=params)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError:
+                return None
+
+
+class DiscordOAuth:
+    """Handle Discord OAuth flow."""
+    
+    AUTHORIZATION_URL = "https://discord.com/api/oauth2/authorize"
+    TOKEN_URL = "https://discord.com/api/oauth2/token"
+    USER_INFO_URL = "https://discord.com/api/users/@me"
+    
+    def __init__(self):
+        self.client_id = DISCORD_CLIENT_ID
+        self.client_secret = DISCORD_CLIENT_SECRET
+        self.redirect_uri = DISCORD_REDIRECT_URI
+    
+    def get_authorization_url(self, state: Optional[str] = None) -> str:
+        """Generate Discord OAuth authorization URL."""
+        params = {
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "response_type": "code",
+            "scope": "identify email",
+        }
+        if state:
+            params["state"] = state
+        
+        query_string = urlencode(params)
+        return f"{self.AUTHORIZATION_URL}?{query_string}"
+    
+    async def get_access_token(self, code: str) -> Optional[Dict]:
+        """Exchange authorization code for access token."""
+        data = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": self.redirect_uri,
+        }
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(self.TOKEN_URL, data=data, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError:
+                return None
+    
+    async def get_user_info(self, access_token: str) -> Optional[Dict]:
+        """Get user information from Discord."""
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(self.USER_INFO_URL, headers=headers)
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPError:
@@ -192,9 +257,6 @@ class OAuthManager:
             raise ValueError(f"Unknown provider: {provider_name}")
         return await provider.get_user_info(code)
 
-
-# Global OAuth manager instance
 oauth_manager = OAuthManager()
-
-# Facebook OAuth instance for backward compatibility
 facebook_oauth = FacebookOAuth()
+discord_oauth = DiscordOAuth()

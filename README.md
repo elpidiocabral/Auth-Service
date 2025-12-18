@@ -1,450 +1,362 @@
 # Auth-Service
 
-Serviço de autenticação reutilizável com suporte a múltiplos provedores de login (local, Google OAuth2). Construído com FastAPI e PostgreSQL.
+Serviço de autenticação reutilizável com suporte a múltiplos provedores OAuth. Construído com FastAPI, SQLAlchemy e arquitetura em camadas.
 
-## Features
+## 🚀 Features
 
-- 🔐 **Autenticação Local**: Login com usuário/senha
-- 🌐 **Google OAuth2**: Login simplificado via Google
-- 👍 **Facebook OAuth**: Login via Facebook
-- 🔑 **Reset de Senha**: Redefinição segura de senha via email
-- 🏗️ **Arquitetura Extensível**: Suporte para adicionar novos provedores
-- 🔑 **JWT Tokens**: Autenticação stateless
-- 🗄️ **PostgreSQL**: Banco de dados confiável
+- 🔐 **Autenticação Local**: Registro e login com email/senha
+- 🌐 **Google OAuth2**: Login via conta Google
+- 🔵 **Facebook OAuth**: Login via conta Facebook
+- 🎮 **Discord OAuth**: Login via conta Discord
+- 🔑 **Reset de Senha**: Redefinição segura via email
+- 🔄 **Retry Pattern**: Resiliência na conexão com banco de dados
+- 🏗️ **Arquitetura em Camadas**: Código organizado e extensível
+- 🔑 **JWT Tokens**: Autenticação stateless e segura
+- 🗄️ **SQLite/PostgreSQL**: Suporte a ambos os bancos
 - 🐳 **Docker**: Containerizado e pronto para produção
+- 📚 **Documentação Interativa**: Swagger UI integrado
 
-## Quick Start
+## 📋 Pré-requisitos
 
-### 1. Pré-requisitos
+**Opção 1 - Docker (Recomendado para produção):**
+- Docker
+- Docker Compose
 
-- Docker e Docker Compose
+**Opção 2 - Local (Desenvolvimento):**
+- Python 3.11+
+- pip
 
-### 2. Configuração
+## ⚡ Quick Start
+
+### Opção 1: Com Docker (PostgreSQL)
 
 ```bash
-# Copiar exemplo de variáveis
+# 1. Clone o repositório
+git clone https://github.com/seu-usuario/Auth-Service.git
+cd Auth-Service
+
+# 2. Configure variáveis de ambiente (opcional para OAuth)
+cp .env.example .env
+# Edite .env com suas credenciais OAuth se necessário
+
+# 3. Inicie os serviços
+docker-compose up --build
+
+# A API estará disponível em: http://localhost:8000
+# Documentação: http://localhost:8000/docs
+```
+
+### Opção 2: Desenvolvimento Local (SQLite)
+
+```bash
+# 1. Clone o repositório
+git clone https://github.com/seu-usuario/Auth-Service.git
+cd Auth-Service
+
+# 2. Instale as dependências
+pip install -r requirements.txt
+
+# 3. Configure o .env (SQLite já vem configurado por padrão)
 cp .env.example .env
 
-# (Opcional) Configurar Google OAuth2
-# Edite .env com suas credenciais do Google
+# 4. Execute a aplicação
+uvicorn app.main:app --reload
+
+# A API estará disponível em: http://localhost:8000
+# Documentação: http://localhost:8000/docs
 ```
 
-### 3. Iniciar
-
-```bash
-docker-compose up --build
-```
-
-A API estará disponível em `http://localhost:8000`
-
-## API Documentation
+## 📚 Documentação da API
 
 ### Documentação Interativa
 
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
-### Endpoints
+### Categorias de Endpoints
 
-#### Health Check
-```
-GET /health
-```
-Verifica se o serviço está funcionando.
+#### 🔐 Authentication (Local)
+- `POST /register` - Registrar novo usuário
+- `POST /login` - Login com email/senha
 
-#### Registrar Usuário
-```
-POST /register
-Content-Type: application/json
+#### 🔑 Password Reset
+- `POST /forgot-password` - Solicitar reset de senha
+- `POST /reset-password` - Confirmar nova senha
 
-{
-  "username": "john_doe",
-  "email": "john@example.com",
-  "password": "securepassword123"
-}
-```
+#### 🌐 OAuth - Google
+- `GET /auth/google/login` - Iniciar login com Google
+- `GET /auth/google/callback` - Callback do Google (automático)
 
-**Response (201):**
-```json
-{
-  "id": 1,
-  "username": "john_doe",
-  "email": "john@example.com",
-  "first_name": null,
-  "last_name": null,
-  "picture_url": null,
-  "provider": "local",
-  "created_at": "2025-12-17T10:30:00"
-}
-```
+#### 🔵 OAuth - Facebook
+- `GET /auth/facebook` - Iniciar login com Facebook
+- `GET /auth/facebook/callback` - Callback do Facebook (automático)
 
-#### Login Local
-```
-POST /login
-Content-Type: application/json
+#### 🎮 OAuth - Discord
+- `GET /auth/discord` - Iniciar login com Discord
+- `GET /auth/discord/callback` - Callback do Discord (automático)
 
-{
-  "username": "john_doe",
-  "password": "securepassword123"
-}
-```
+#### 👤 User Profile
+- `GET /me` - Obter informações do usuário autenticado
+- `GET /profile` - Obter perfil do usuário
 
-**Response (200):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "user": {
-    "id": 1,
-    "username": "john_doe",
+#### 💚 Health
+- `GET /` - Informações da API
+- `GET /health` - Status do serviço
+
+## 🔧 Exemplos de Uso
+
+### Registrar Usuário
+
+```bash
+curl -X POST "http://localhost:8000/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "johndoe",
     "email": "john@example.com",
-    "provider": "local"
-  }
-}
+    "password": "senha123"
+  }'
 ```
 
-#### 🆕 Solicitar Reset de Senha
-```
-POST /forgot-password
-Content-Type: application/json
-
-{
-  "email": "john@example.com"
-}
-```
-
-**Response (200):**
-```json
-{
-  "message": "Se o email existir em nossa base de dados, você receberá um link para redefinir a senha."
-}
-```
-
-#### 🆕 Redefinir Senha
-```
-POST /reset-password
-Content-Type: application/json
-
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "new_password": "novaSenha123"
-}
-```
-
-**Response (200):**
-```json
-{
-  "message": "Senha redefinida com sucesso. Você pode agora fazer login com sua nova senha."
-}
-```
-
-#### Listar Todas as Rotas
-```
-GET /routes
-```
-
-Retorna uma lista completa de todas as rotas disponíveis na API
-    "first_name": null,
-    "last_name": null,
-    "picture_url": null,
-    "provider": "local",
-    "created_at": "2025-12-17T10:30:00"
-  }
-}
-```
-
-#### Login com Google - Iniciar
-```
-GET /auth/google/login
-```
-
-Redireciona para a tela de login do Google. Após autenticação, Google redireciona para o callback.
-
-#### Login com Google - Callback
-```
-POST /auth/google/callback
-Content-Type: application/json
-
-{
-  "code": "authorization_code_from_google",
-  "state": "state_token"
-}
-```
-
-**Response (200):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "user": {
-    "id": 2,
-    "username": null,
-    "email": "user@gmail.com",
-    "first_name": "John",
-    "last_name": "Doe",
-    "picture_url": "https://...",
-    "provider": "google",
-    "created_at": "2025-12-17T10:35:00"
-  }
-}
-```
-
-#### Obter Perfil
-```
-GET /profile
-Authorization: Bearer <access_token>
-```
-
-**Response (200):**
+**Response:**
 ```json
 {
   "id": 1,
-  "username": "john_doe",
+  "username": "johndoe",
   "email": "john@example.com",
   "first_name": null,
   "last_name": null,
-  "picture_url": null,
   "provider": "local",
-  "created_at": "2025-12-17T10:30:00"
+  "created_at": "2025-12-18T10:30:00"
 }
 ```
 
-## Integração em Seu Projeto
+### Login
 
-### Cliente JavaScript
-
-```javascript
-import AuthServiceClient from './client.js'
-
-const auth = new AuthServiceClient('http://localhost:8000')
-
-// Login local
-await auth.login('username', 'password')
-
-// Ou Google OAuth2
-auth.startGoogleLogin()
-
-// Usar token
-const profile = await auth.getProfile()
-console.log(auth.token) // JWT token
+```bash
+curl -X POST "http://localhost:8000/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "johndoe",
+    "password": "senha123"
+  }'
 ```
 
-### Cliente Python
-
-```python
-from client_example import AuthServiceClient
-
-client = AuthServiceClient('http://localhost:8000')
-
-# Login local
-result = client.login('username', 'password')
-token = client.token
-
-# Usar em requisições
-profile = client.get_profile()
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
 ```
 
-### Fazer Requisições Autenticadas
+### Obter Perfil (Autenticado)
 
-```python
-import requests
-
-token = "seu_jwt_token_aqui"
-headers = {"Authorization": f"Bearer {token}"}
-
-response = requests.get(
-    "http://seu-servico/api/protected",
-    headers=headers
-)
+```bash
+curl -X GET "http://localhost:8000/me" \
+  -H "Authorization: Bearer SEU_TOKEN_AQUI"
 ```
 
-## Configuração Google OAuth2
+### Login com OAuth
+
+Para Google, Facebook ou Discord, basta acessar no navegador:
+
+```
+http://localhost:8000/auth/google/login
+http://localhost:8000/auth/facebook
+http://localhost:8000/auth/discord
+```
+
+Você será redirecionado para a página de login do provedor, e após autenticar, receberá um token JWT.
+
+## 🔐 Configuração OAuth
+
+### Google OAuth2
 
 1. Acesse [Google Cloud Console](https://console.cloud.google.com/)
-2. Crie um novo projeto
-3. Ative Google+ API
-4. Crie credencial OAuth2 (Web Application)
-5. Configure URIs autorizadas:
-   - **Origem**: `http://localhost:8000`
-   - **Callback**: `http://localhost:8000/auth/google/callback`
-6. Copie Client ID e Secret para `.env`:
+2. Crie um novo projeto ou selecione um existente
+3. Ative a **Google+ API**
+4. Vá em **Credenciais > Criar Credenciais > ID do cliente OAuth**
+5. Configure:
+   - **Tipo**: Aplicativo da Web
+   - **URIs de redirecionamento autorizados**: `http://localhost:8000/auth/google/callback`
+6. Copie **Client ID** e **Client Secret** para o `.env`:
 
 ```env
 GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=seu-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
 ```
 
-## Variáveis de Ambiente
+### Facebook OAuth
 
-Ver [`.env.example`](.env.example) para todas as opções:
+1. Acesse [Facebook Developers](https://developers.facebook.com/apps/)
+2. Crie um novo aplicativo
+3. Em **Produtos**, adicione **Facebook Login**
+4. Configure:
+   - **URIs de redirecionamento OAuth válidos**: `http://localhost:8000/auth/facebook/callback`
+5. Copie **App ID** e **App Secret** para o `.env`:
+
+```env
+FACEBOOK_CLIENT_ID=seu-app-id
+FACEBOOK_CLIENT_SECRET=seu-app-secret
+```
+
+### Discord OAuth
+
+1. Acesse [Discord Developers](https://discord.com/developers/applications)
+2. Crie uma nova aplicação
+3. Em **OAuth2 > General**, adicione:
+   - **Redirects**: `http://localhost:8000/auth/discord/callback`
+4. Copie **Client ID** e **Client Secret** para o `.env`:
+
+```env
+DISCORD_CLIENT_ID=seu-client-id
+DISCORD_CLIENT_SECRET=seu-client-secret
+```
+
+## 🗄️ Banco de Dados
+
+### SQLite (Padrão - Desenvolvimento)
+
+Por padrão, o projeto usa SQLite, perfeito para desenvolvimento e testes:
+
+```env
+DATABASE_URL=sqlite:///./test.db
+```
+
+Não precisa instalar ou configurar nada!
+
+### PostgreSQL (Produção)
+
+Para produção com Docker, o `docker-compose.yml` já configura PostgreSQL automaticamente:
+
+```env
+DATABASE_URL=postgresql://auth_user:auth_password@db:5432/auth_db
+```
+
+## 🏗️ Arquitetura
+
+O projeto segue **Arquitetura em Camadas (Layered Architecture)**:
+
+```
+┌─────────────────────────────────────┐
+│   Presentation Layer (API/Routes)   │  ← main.py
+├─────────────────────────────────────┤
+│   Business Logic Layer (Services)   │  ← auth.py, oauth.py
+├─────────────────────────────────────┤
+│   Data Access Layer (Repository)    │  ← database.py
+├─────────────────────────────────────┤
+│   Domain Models (Entities/DTOs)     │  ← schemas.py, User model
+├─────────────────────────────────────┤
+│   Configuration Layer                │  ← config.py
+└─────────────────────────────────────┘
+```
+
+### Estrutura de Arquivos
+
+```
+Auth-Service/
+├── app/
+│   ├── __init__.py
+│   ├── main.py           # Endpoints da API (Presentation Layer)
+│   ├── auth.py           # Serviços de autenticação JWT/hash
+│   ├── oauth.py          # Provedores OAuth (Google, Facebook, Discord)
+│   ├── database.py       # Modelos e conexão com banco
+│   ├── schemas.py        # DTOs (Pydantic models)
+│   └── config.py         # Configurações e variáveis de ambiente
+├── docker-compose.yml    # Configuração Docker
+├── Dockerfile           # Imagem da aplicação
+├── requirements.txt     # Dependências Python
+├── .env.example         # Exemplo de variáveis de ambiente
+└── README.md           # Este arquivo
+```
+
+## 🔄 Padrão de Resiliência
+
+O serviço implementa **Retry Pattern** usando a biblioteca Tenacity para conexões com banco de dados:
+
+- **Tentativas**: 5 tentativas máximas
+- **Estratégia**: Backoff exponencial (2s min, 10s max)
+- **Exceções**: Retenta apenas em `OperationalError`
+
+Isso garante que a aplicação lide graciosamente com falhas temporárias de conexão.
+
+## 🔧 Variáveis de Ambiente
+
+Exemplo completo (veja [.env.example](.env.example)):
 
 ```env
 # Database
-DATABASE_URL=postgresql://user:password@host:5432/db
+DATABASE_URL=sqlite:///./test.db
 
 # JWT
-SECRET_KEY=sua-chave-secreta
+SECRET_KEY=your-secret-key-change-in-production
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# Google OAuth2
+# Google OAuth
 GOOGLE_CLIENT_ID=seu-id
 GOOGLE_CLIENT_SECRET=seu-secret
 GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+
+# Facebook OAuth
+FACEBOOK_CLIENT_ID=seu-app-id
+FACEBOOK_CLIENT_SECRET=seu-app-secret
+FACEBOOK_REDIRECT_URI=http://localhost:8000/auth/facebook/callback
+
+# Discord OAuth
+DISCORD_CLIENT_ID=seu-client-id
+DISCORD_CLIENT_SECRET=seu-client-secret
+DISCORD_REDIRECT_URI=http://localhost:8000/auth/discord/callback
+
+# Email (SMTP)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=seu-email@gmail.com
+SMTP_PASSWORD=sua-senha-de-app
 
 # Frontend
 FRONTEND_URL=http://localhost:3000
 ```
 
-## Estrutura do Projeto
+## 🚀 Deploy em Produção
 
-```
-app/
-├── __init__.py
-├── auth.py           # JWT e password hashing
-├── config.py         # Configurações
-├── database.py       # Modelos e conexão BD
-├── main.py           # Endpoints da API
-├── oauth.py          # Provedores OAuth
-└── schemas.py        # Modelos Pydantic
+### Alterações necessárias:
+
+1. **Altere SECRET_KEY** para um valor seguro:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-## Adicionar Novo Provedor OAuth
+2. **Use PostgreSQL** em vez de SQLite
 
-1. Criar classe em `app/oauth.py`:
+3. **Configure HTTPS** (obrigatório para OAuth)
 
-```python
-class NovoProviderOAuth(OAuthProvider):
-    async def get_authorization_url(self, state: str) -> str:
-        # Implementar
-        pass
-    
-    async def get_user_info(self, code: str) -> Dict[str, Any]:
-        # Implementar
-        pass
-```
+4. **Atualize redirect URIs** nos provedores OAuth para suas URLs de produção
 
-2. Registrar em `oauth_manager`:
+5. **Configure CORS** apropriadamente no `main.py`
 
-```python
-oauth_manager.register_provider("novo", NovoProviderOAuth())
-```
+## 🧪 Testando Endpoints
 
-3. Adicionar endpoint em `main.py`
+Use o Swagger UI em `/docs` ou ferramentas como cURL, Postman, Insomnia.
 
-## Contribuindo
+## 🤝 Contribuindo
 
-Pull requests são bem-vindos! Por favor:
+Pull requests são bem-vindos! Para mudanças maiores:
 
-1. Teste sua implementação
-2. Mantenha a cobertura de testes
-3. Atualize a documentação
+1. Abra uma issue primeiro
+2. Fork o projeto
+3. Crie sua feature branch
+4. Commit suas mudanças
+5. Push para a branch
+6. Abra um Pull Request
 
-## Licença
+## 📝 Licença
 
 MIT
 
-Response (200 OK):
-```json
-{
-  "id": 1,
-  "username": "john_doe",
-  "email": "john@example.com"
-}
-```
+## 🔗 Links Úteis
 
-## Testing with cURL
-
-### Register a user:
-```bash
-curl -X POST "http://localhost:8000/register" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "testuser",
-    "email": "test@example.com",
-    "password": "testpass123"
-  }'
-```
-
-### Login:
-```bash
-curl -X POST "http://localhost:8000/login" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "testuser",
-    "password": "testpass123"
-  }'
-```
-
-### Get user info (replace TOKEN with actual token):
-```bash
-curl -X GET "http://localhost:8000/me" \
-  -H "Authorization: Bearer TOKEN"
-```
-
-## Environment Variables
-
-Create a `.env` file based on `.env.example`:
-
-```env
-DATABASE_URL=postgresql://auth_user:auth_password@db:5432/auth_db
-SECRET_KEY=your-secret-key-change-in-production
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-```
-
-## Resilience Pattern
-
-The service implements a retry pattern using the Tenacity library for database connections:
-- **Retry attempts**: 5 attempts
-- **Retry strategy**: Exponential backoff (2s min, 10s max)
-- **Exception handling**: Retries on `OperationalError`
-
-This ensures the application can handle temporary database connection issues gracefully.
-
-## Development
-
-### Local Development (without Docker)
-
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-2. Set up PostgreSQL and update environment variables
-
-3. Run the application:
-```bash
-uvicorn app.main:app --reload
-```
-
-## Project Structure
-
-```
-Auth-Service/
-├── app/
-│   ├── main.py         # FastAPI application and endpoints
-│   ├── database.py     # Database models and connection with retry
-│   ├── auth.py         # Authentication utilities (JWT, password hashing)
-│   ├── schemas.py      # Pydantic models for request/response
-│   └── config.py       # Configuration settings
-├── Dockerfile          # Docker configuration for the app
-├── docker-compose.yml  # Docker Compose configuration
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment variables example
-├── .gitignore         # Git ignore file
-└── README.md          # This file
-```
-
-## Security Notes
-
-- Change the `SECRET_KEY` in production
-- Use strong passwords for database credentials
-- Consider using HTTPS in production
-- Implement rate limiting for production use
-- Add input validation and sanitization as needed
-
-## License
-
-MIT
+- [Documentação FastAPI](https://fastapi.tiangolo.com/)
+- [Google OAuth2](https://developers.google.com/identity/protocols/oauth2)
+- [Facebook OAuth](https://developers.facebook.com/docs/facebook-login)
+- [Discord OAuth2](https://discord.com/developers/docs/topics/oauth2)
