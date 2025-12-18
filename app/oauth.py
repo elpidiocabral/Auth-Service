@@ -63,7 +63,6 @@ class GoogleOAuthProvider(OAuthProvider):
     async def get_user_info(self, code: str) -> Dict[str, Any]:
         """Exchange authorization code for user info"""
         async with httpx.AsyncClient() as client:
-            # Step 1: Exchange code for access token
             token_data = {
                 "code": code,
                 "client_id": self.client_id,
@@ -81,7 +80,6 @@ class GoogleOAuthProvider(OAuthProvider):
                 if not access_token:
                     raise ValueError("No access token in response")
                 
-                # Step 2: Get user info using access token
                 headers = {"Authorization": f"Bearer {access_token}"}
                 user_response = await client.get(self.USERINFO_URL, headers=headers)
                 user_response.raise_for_status()
@@ -131,5 +129,4 @@ class OAuthManager:
         return await provider.get_user_info(code)
 
 
-# Global OAuth manager instance
 oauth_manager = OAuthManager()

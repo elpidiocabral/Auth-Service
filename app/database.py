@@ -17,10 +17,8 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=True)
-    # OAuth2 Provider Information
     provider = Column(String, nullable=True)  # 'google', 'local', etc
     provider_user_id = Column(String, nullable=True, index=True)  # Google sub
-    # User Info
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     picture_url = Column(String, nullable=True)
@@ -45,12 +43,10 @@ def create_db_engine_with_retry():
 
 def create_db_engine():
     """Create database engine (SQLite doesn't need retry)."""
-    # SQLite doesn't need retry logic
     if DATABASE_URL.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
         return create_engine(DATABASE_URL, connect_args=connect_args)
     else:
-        # PostgreSQL with retry pattern
         return create_db_engine_with_retry()
 
 

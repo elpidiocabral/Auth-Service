@@ -262,13 +262,6 @@ app/
 └── schemas.py        # Modelos Pydantic
 ```
 
-## Testing
-
-```bash
-chmod +x test_api.sh
-./test_api.sh
-```
-
 ## Adicionar Novo Provedor OAuth
 
 1. Criar classe em `app/oauth.py`:
