@@ -301,7 +301,7 @@ def get_current_user(
     
     return user
 
-@app.get("/auth/facebook", tags=["OAuth - Facebook"])
+@app.get("/auth/facebook/login", tags=["OAuth - Facebook"])
 def facebook_login():
     """Redirect to Facebook login page."""
     authorization_url = facebook_oauth.get_authorization_url()
@@ -401,7 +401,7 @@ async def facebook_callback(code: Optional[str] = None, error: Optional[str] = N
     }
 
 
-@app.get("/auth/discord", tags=["OAuth - Discord"])
+@app.get("/auth/discord/login", tags=["OAuth - Discord"])
 def discord_login():
     """Redirect to Discord login page."""
     authorization_url = discord_oauth.get_authorization_url()
